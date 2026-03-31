@@ -1,10 +1,7 @@
 # Security
 .env
 
-# Python
+# Python & uv Environment
 __pycache__/
 *.pyc
-venv/
-
-# Golang binaries
-entsoe_extractor/entsoe_extractor
+.venv/
