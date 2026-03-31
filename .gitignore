@@ -1,0 +1,10 @@
+# Security
+.env
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Golang binaries
+entsoe_extractor/entsoe_extractor
