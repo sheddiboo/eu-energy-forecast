@@ -3,26 +3,26 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
-	"log"
 
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	fmt.Println("⚡ Starting EU Energy API Test in Golang...")
+	fmt.Println("Starting EU Energy API Test in Golang...")
 
-	// 1. Load the .env file from the root directory (3 levels up)
+	// Load the .env file from the root directory
 	err := godotenv.Load("../../../.env")
 	if err != nil {
-		log.Fatal("❌ Error loading .env file. Are you sure it's 3 levels up?")
+		log.Fatal("Error loading .env file. Are you sure it's 3 levels up?")
 	}
 
-	// 2. Fetch the token securely from the environment variable
+	// Fetch the token securely from the environment variable
 	token := os.Getenv("ENTSOE_API_KEY")
 	if token == "" {
-		log.Fatal("❌ ENTSOE_API_KEY is empty or not found in .env")
+		log.Fatal("ENTSOE_API_KEY is empty or not found in .env")
 	}
 
 	// The API endpoint for Germany Day-Ahead Prices
@@ -31,7 +31,7 @@ func main() {
 	// Make the HTTP GET request
 	resp, err := http.Get(url)
 	if err != nil {
-		fmt.Println("❌ Request failed:", err)
+		fmt.Println("Request failed:", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -39,19 +39,29 @@ func main() {
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("❌ Failed to read body:", err)
+		fmt.Println("Failed to read body:", err)
 		return
 	}
 
 	// Print the results
-	fmt.Printf("✅ Status Code: %d\n\n", resp.StatusCode)
-	
+	fmt.Printf("Status Code: %d\n\n", resp.StatusCode)
+
 	if resp.StatusCode == 200 {
-		fmt.Println("🎉 API Key is Valid! Here is a snippet of the raw XML data:")
-		// Print the first 400 characters of the XML
-		fmt.Println(string(body)[:400])
+		fmt.Println("API Key Valid! Parsing XML and flattening to CSV...")
+
+		// Define the path to your raw data landing zone
+		outputPath := "../../../data/raw/germany_prices.csv"
+
+		// Call the function built in parser.go
+		err = ParseAndSaveCSV(body, outputPath)
+		if err != nil {
+			fmt.Println("Parsing Failed:", err)
+			return
+		}
+
+		fmt.Println("Success! Check the data/raw folder for your clean CSV.")
 	} else {
-		fmt.Println("Something went wrong. Full response:")
+		fmt.Printf("Something went wrong. Status: %d\n", resp.StatusCode)
 		fmt.Println(string(body))
 	}
 }
