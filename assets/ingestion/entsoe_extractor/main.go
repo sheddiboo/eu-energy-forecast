@@ -23,7 +23,7 @@ type ApiRequest struct {
 
 // A global HTTP client is configured with an extended timeout to prevent I/O timeouts.
 var client = &http.Client{
-	Timeout: 60 * time.Second,
+	Timeout: 390 * time.Second,
 }
 
 // fetchENTSOE orchestrates the network request, parameter routing, and network resilience.
@@ -32,6 +32,13 @@ func fetchENTSOE(req ApiRequest, token string, wg *sync.WaitGroup, limiter chan 
 	defer func() { <-limiter }()
 
 	outputPath := fmt.Sprintf("../../../data/raw/%s_%s.csv", req.Country, req.FeatureName)
+
+	// Idempotency check: bypasses the network request if a populated file already exists.
+	if info, err := os.Stat(outputPath); err == nil && info.Size() > 0 {
+		fmt.Printf("Skipping %s %s (Already downloaded)\n", req.Country, req.FeatureName)
+		return
+	}
+
 	periodStart := "202601010000"
 	periodEnd := "202604012300"
 

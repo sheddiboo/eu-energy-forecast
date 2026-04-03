@@ -17,7 +17,10 @@ type MarketDocument struct {
 
 type TimeSeries struct {
 	BusinessType string `xml:"businessType"`
-	Period       Period `xml:"Period"`
+	MktPSRType   struct {
+		PsrType string `xml:"psrType"`
+	} `xml:"MktPSRType"`
+	Period Period `xml:"Period"`
 }
 
 type Period struct {
@@ -39,6 +42,10 @@ func ParseAndSaveCSV(xmlData []byte, filename string) error {
 	var doc MarketDocument
 	if err := xml.Unmarshal(xmlData, &doc); err != nil {
 		return fmt.Errorf("failed to unmarshal XML: %v", err)
+	}
+
+	if len(doc.TimeSeries) == 0 {
+		return fmt.Errorf("no data available from ENTSO-E for this feature")
 	}
 
 	file, err := os.Create(filename)
@@ -65,14 +72,24 @@ func ParseAndSaveCSV(xmlData []byte, filename string) error {
 	writer.Write(header)
 
 	for _, ts := range doc.TimeSeries {
-		startTime, err := time.Parse(time.RFC3339, ts.Period.TimeInterval.Start)
+		// A custom layout is defined to match the ENTSO-E standard, which omits seconds.
+		layout := "2006-01-02T15:04Z"
+		startTime, err := time.Parse(layout, ts.Period.TimeInterval.Start)
 		if err != nil {
-			continue
+			// A fallback to RFC3339 is provided to handle potential API format variations.
+			startTime, err = time.Parse(time.RFC3339, ts.Period.TimeInterval.Start)
+			if err != nil {
+				// Errors are surfaced to standard output rather than failing silently.
+				fmt.Printf("Timestamp parsing error for %s: %v\n", filename, err)
+				continue
+			}
 		}
 
 		resolution := time.Hour
 		if ts.Period.Resolution == "PT15M" {
 			resolution = 15 * time.Minute
+		} else if ts.Period.Resolution == "PT30M" {
+			resolution = 30 * time.Minute
 		}
 
 		for _, p := range ts.Period.Points {
@@ -88,7 +105,12 @@ func ParseAndSaveCSV(xmlData []byte, filename string) error {
 			if val != "" {
 				row := []string{timestamp, val}
 				if isGeneration {
-					row = append(row, ts.BusinessType)
+					// Extract the fuel type. Fallback to businessType if it is missing.
+					fuelType := ts.MktPSRType.PsrType
+					if fuelType == "" {
+						fuelType = ts.BusinessType
+					}
+					row = append(row, fuelType)
 				}
 				writer.Write(row)
 			}

@@ -8,3 +8,6 @@ __pycache__/
 
 # raw data
 data/
+
+# jupyter checkout
+.ipynb_checkpoints
