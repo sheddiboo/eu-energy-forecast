@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/joho/godotenv"
 )
 
@@ -22,6 +23,53 @@ const (
 	dataDir    = "../../../data/raw" // Correctly navigates up to the root, then into data/raw
 	s3Prefix   = "bronze/"           // The target folder inside S3
 )
+
+// emptyBronzeLayer deletes all existing objects in the target S3 prefix before uploading new data
+func emptyBronzeLayer(ctx context.Context, client *s3.Client) {
+	fmt.Printf("Scanning s3://%s/%s for existing files...\n", bucketName, s3Prefix)
+	paginator := s3.NewListObjectsV2Paginator(client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucketName),
+		Prefix: aws.String(s3Prefix),
+	})
+
+	var objectIds []types.ObjectIdentifier
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			log.Fatalf("Failed to list objects in bucket: %v", err)
+		}
+
+		for _, obj := range page.Contents {
+			objectIds = append(objectIds, types.ObjectIdentifier{Key: obj.Key})
+		}
+	}
+
+	if len(objectIds) > 0 {
+		fmt.Printf("Found %d old files. Deleting...\n", len(objectIds))
+		// AWS allows deleting up to 1000 objects per request
+		for i := 0; i < len(objectIds); i += 1000 {
+			end := i + 1000
+			if end > len(objectIds) {
+				end = len(objectIds)
+			}
+
+			_, err := client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+				Bucket: aws.String(bucketName),
+				Delete: &types.Delete{
+					Objects: objectIds[i:end],
+					Quiet:   aws.Bool(true),
+				},
+			})
+			if err != nil {
+				log.Fatalf("Failed to delete objects: %v", err)
+			}
+		}
+		fmt.Println("Bronze layer successfully cleared.")
+	} else {
+		fmt.Println("Bronze layer is already empty.")
+	}
+}
 
 // uploadFile handles the streaming of a single file to AWS S3 with dynamic folder mapping
 func uploadFile(ctx context.Context, client *s3.Client, filePath string, wg *sync.WaitGroup, limiter chan struct{}) {
@@ -72,7 +120,7 @@ func uploadFile(ctx context.Context, client *s3.Client, filePath string, wg *syn
 
 func main() {
 	start := time.Now()
-	fmt.Println("Starting S3 Bulk Upload to Bronze Layer...")
+	fmt.Println("Starting DataOps S3 Pipeline...")
 
 	// Load credentials from your existing .env setup in the root directory
 	err := godotenv.Load("../../../.env")
@@ -87,6 +135,12 @@ func main() {
 	}
 
 	client := s3.NewFromConfig(cfg)
+
+	// STEP 1: Empty the existing Bronze layer to ensure a clean slate
+	emptyBronzeLayer(context.TODO(), client)
+
+	// STEP 2: Blast the new files up to the cloud
+	fmt.Println("Starting S3 Bulk Upload to Bronze Layer...")
 	var wg sync.WaitGroup
 
 	// A semaphore to limit concurrent uploads to 5 to avoid overwhelming network buffers

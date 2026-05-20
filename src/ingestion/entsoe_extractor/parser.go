@@ -37,7 +37,7 @@ type Point struct {
 	Quantity string `xml:"quantity"`
 }
 
-// ParseAndSaveCSV transforms raw XML bytes into a structured CSV with calculated timestamps.
+// ParseAndSaveCSV transforms raw XML bytes into a structured CSV, appending if the file exists.
 func ParseAndSaveCSV(xmlData []byte, filename string) error {
 	var doc MarketDocument
 	if err := xml.Unmarshal(xmlData, &doc); err != nil {
@@ -48,7 +48,14 @@ func ParseAndSaveCSV(xmlData []byte, filename string) error {
 		return fmt.Errorf("no data available from ENTSO-E for this feature")
 	}
 
-	file, err := os.Create(filename)
+	// SMART APPEND LOGIC: Check if file exists to determine if we need to write headers
+	fileExists := false
+	if info, err := os.Stat(filename); err == nil && info.Size() > 0 {
+		fileExists = true
+	}
+
+	// Open file in append mode. Create it if it doesn't exist.
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -61,25 +68,25 @@ func ParseAndSaveCSV(xmlData []byte, filename string) error {
 	isPrice := strings.Contains(f, "prices")
 	isGeneration := strings.Contains(f, "generation") || strings.Contains(f, "windsolar")
 
-	header := []string{"Timestamp"}
-	if isPrice {
-		header = append(header, "Price_EUR_MWh")
-	} else if isGeneration {
-		header = append(header, "Gen_MW", "FuelType")
-	} else {
-		header = append(header, "Value_MW")
+	// Only write headers if this is a brand new file (i.e., the 2015 chunk)
+	if !fileExists {
+		header := []string{"Timestamp"}
+		if isPrice {
+			header = append(header, "Price_EUR_MWh")
+		} else if isGeneration {
+			header = append(header, "Gen_MW", "FuelType")
+		} else {
+			header = append(header, "Value_MW")
+		}
+		writer.Write(header)
 	}
-	writer.Write(header)
 
 	for _, ts := range doc.TimeSeries {
-		// A custom layout is defined to match the ENTSO-E standard, which omits seconds.
 		layout := "2006-01-02T15:04Z"
 		startTime, err := time.Parse(layout, ts.Period.TimeInterval.Start)
 		if err != nil {
-			// A fallback to RFC3339 is provided to handle potential API format variations.
 			startTime, err = time.Parse(time.RFC3339, ts.Period.TimeInterval.Start)
 			if err != nil {
-				// Errors are surfaced to standard output rather than failing silently.
 				fmt.Printf("Timestamp parsing error for %s: %v\n", filename, err)
 				continue
 			}
@@ -94,7 +101,6 @@ func ParseAndSaveCSV(xmlData []byte, filename string) error {
 
 		for _, p := range ts.Period.Points {
 			pos, _ := strconv.Atoi(p.Position)
-
 			timestamp := startTime.Add(time.Duration(pos-1) * resolution).Format("2006-01-02 15:04:05")
 
 			val := p.Price
@@ -105,7 +111,6 @@ func ParseAndSaveCSV(xmlData []byte, filename string) error {
 			if val != "" {
 				row := []string{timestamp, val}
 				if isGeneration {
-					// Extract the fuel type. Fallback to businessType if it is missing.
 					fuelType := ts.MktPSRType.PsrType
 					if fuelType == "" {
 						fuelType = ts.BusinessType
