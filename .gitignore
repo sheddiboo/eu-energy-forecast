@@ -17,3 +17,4 @@ data/
 *.tfstate
 *.tfstate.backup
 .terraform.lock.hcl
+.bruin.yml
