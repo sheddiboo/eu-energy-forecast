@@ -3,7 +3,7 @@
 # name: predict_day_ahead_price
 # type: bash
 # depends:
-#   - fetch_raw_energy_data
+#   - transform_silver_gold
 # @bruin
 
 echo "Starting Python Inference..."

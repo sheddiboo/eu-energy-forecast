@@ -6,65 +6,70 @@ from email.utils import parsedate_to_datetime
 from dotenv import load_dotenv
 from groq import Groq
 
-# Load environment variables (API Key)
+# Loads environment variables from the .env file
 load_dotenv()
+
+# Initializes the Groq client for LLM API calls
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 def fetch_live_news(rss_url="https://energypost.eu/feed/", days_back=3):
     """
-    Fetches headlines from an RSS feed published strictly within the last X days.
+    Fetches headlines from an RSS feed published strictly within the defined timeframe.
     """
     print(f"Fetching live intelligence from: {rss_url} (Last {days_back} Days)")
-    feed = feedparser.parse(rss_url)
     
+    # Parses the provided RSS feed URL
+    feed = feedparser.parse(rss_url)
     news_summaries = []
     
-    # Calculate the cutoff date (timezone aware)
+    # Calculates the timezone-aware cutoff date for recent articles
     now = datetime.now(timezone.utc)
     cutoff_date = now - timedelta(days=days_back)
     
     for entry in feed.entries:
         title = entry.title
         
-        # Parse the publication date of the article
+        # Evaluates the publication date of the article
         if hasattr(entry, 'published'):
             try:
-                # RSS feeds use RFC 822 date formats, we parse it to a datetime object
+                # Converts RFC 822 format to a standard Python datetime object
                 article_date = parsedate_to_datetime(entry.published)
                 
-                # Make sure it's timezone aware for accurate comparison
+                # Ensures the parsed date is timezone-aware for accurate comparison
                 if article_date.tzinfo is None:
                     article_date = article_date.replace(tzinfo=timezone.utc)
                 
-                # Check if the article was published within our timeframe
+                # Appends the headline to the summary list if it falls within the required timeframe
                 if article_date >= cutoff_date:
                     formatted_date = article_date.strftime("%Y-%m-%d")
                     news_summaries.append(f"- [{formatted_date}] {title}")
             except Exception as e:
                 print(f"Warning: Could not parse date for article '{title}'. Error: {e}")
                 
+    # Returns a fallback message if no recent news is found
     if not news_summaries:
         return "No major energy news published in the specified timeframe."
         
     return "\n".join(news_summaries)
 
-def get_market_sentiment_multiplier(baseline_prediction=85.50, model_mae=21.10):
+def get_market_sentiment_multiplier(baseline_prediction, model_mae):
     """
-    Passes the live news and baseline context to Llama 3.3 and returns the calculated sentiment multiplier.
+    Passes the live news and baseline context to an LLM and returns a calculated sentiment multiplier.
+    Requires dynamic baseline_prediction and model_mae inputs to execute.
     """
-    # 1. Get the real news
+    # Retrieves the recent news headlines
     live_news = fetch_live_news()
     print("\nToday's Headlines:")
     print(live_news)
     
-    # 2. Define the Agent's Rules
+    # Defines the system prompt containing context, rules, and the expected JSON format
     system_prompt = f"""
     You are a Senior Energy Trader in the European power market. 
     Your objective is to read recent energy news and adjust a machine learning baseline price prediction.
     
     CONTEXT:
-    - The quantitative baseline model predicts tomorrow's price will be EUR {baseline_prediction}/MWh.
-    - The model has a historical Mean Absolute Error (MAE) of +/- EUR {model_mae}/MWh.
+    - The quantitative baseline model predicts tomorrow's price will be EUR {baseline_prediction:.2f}/MWh.
+    - The model has a historical Mean Absolute Error (MAE) of +/- EUR {model_mae:.2f}/MWh.
     - This means the true price is highly likely to fall between EUR {baseline_prediction - model_mae:.2f} and EUR {baseline_prediction + model_mae:.2f}.
     
     RULES:
@@ -86,6 +91,7 @@ def get_market_sentiment_multiplier(baseline_prediction=85.50, model_mae=21.10):
     
     print("\nConsulting Senior Trader (Llama 3.3) for Sentiment Analysis...")
     try:
+        # Executes the chat completion request to the Groq API
         response = client.chat.completions.create(
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -96,17 +102,12 @@ def get_market_sentiment_multiplier(baseline_prediction=85.50, model_mae=21.10):
             response_format={"type": "json_object"} 
         )
         
-        # 3. Parse the JSON response
+        # Parses and returns the JSON payload from the LLM's response
         result = json.loads(response.choices[0].message.content)
         return result
         
     except Exception as e:
         print(f"\nError connecting to Groq API: {e}")
-        # If the API fails, return a safe neutral multiplier so the pipeline doesn't crash
+        # Returns a safe default multiplier to prevent pipeline failure if the API call fails
         return {"reasoning": "API Failure. Defaulting to neutral.", "sentiment": "Neutral", "multiplier": 1.00}
 
-if __name__ == "__main__":
-    # Execute the function with our test parameters and print the final JSON
-    trader_output = get_market_sentiment_multiplier(baseline_prediction=85.50, model_mae=21.10)
-    print("\nFinal LLM Output:")
-    print(json.dumps(trader_output, indent=4))

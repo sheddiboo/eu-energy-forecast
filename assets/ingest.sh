@@ -5,5 +5,12 @@
 # @bruin
 
 echo "Starting Golang Ingestion..."
-# We use absolute paths from the project root to ensure it always finds the file
-cd assets/ingestion && go run main.go
+
+# 1. Fetch ENTSO-E Grid Data
+cd assets/ingestion/entsoe_extractor && go run main.go parser.go
+
+# 2. Fetch Open-Meteo Weather Data
+cd ../weather_extractor && go run main.go
+
+# 3. Push to AWS S3
+cd .. && go run aws_uploader.go

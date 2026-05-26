@@ -19,8 +19,8 @@ import (
 const (
 	bucketName = "eu-energy-raw-ireland-sj"
 	region     = "eu-west-1"
-	dataDir    = "../../../data/raw" // Navigates to the raw data folder
-	s3Prefix   = "bronze/"           // The destination folder structure within S3
+	dataDir    = "../../data/raw" // Navigates up 2 levels to the root data folder
+	s3Prefix   = "bronze/"        // The destination folder structure within S3
 )
 
 // uploadFile manages the transfer of a single file to AWS S3, routing it to the appropriate sub-folder.
@@ -72,10 +72,10 @@ func uploadFile(ctx context.Context, client *s3.Client, filePath string, wg *syn
 
 func main() {
 	start := time.Now()
-	fmt.Println("Starting Targeted S3 Pipeline (Weather Files Only)...")
+	fmt.Println("Starting Full S3 Pipeline Upload (All Grid and Weather Files)...")
 
 	// Load environment variables for AWS authentication
-	err := godotenv.Load("../../../.env")
+	err := godotenv.Load("../../.env") // Navigates up 2 levels to the root .env file
 	if err != nil {
 		log.Println("No .env file found. Proceeding with system environment variables.")
 	}
@@ -88,11 +88,11 @@ func main() {
 
 	client := s3.NewFromConfig(cfg)
 
-	fmt.Println("Scanning for weather files...")
+	fmt.Println("Scanning for local CSV files...")
 	var wg sync.WaitGroup
 
 	// Implement a semaphore to limit concurrent uploads
-	limiter := make(chan struct{}, 5)
+	limiter := make(chan struct{}, 10)
 
 	// Read all files located in the local raw data directory
 	files, err := os.ReadDir(dataDir)
@@ -102,8 +102,8 @@ func main() {
 
 	uploadCount := 0
 	for _, file := range files {
-		// FILTER APPLIED: Only upload if it is a .csv AND contains "weather" in the filename
-		if !file.IsDir() && filepath.Ext(file.Name()) == ".csv" && strings.Contains(file.Name(), "weather") {
+		// Upload all CSV files
+		if !file.IsDir() && filepath.Ext(file.Name()) == ".csv" {
 			uploadCount++
 			wg.Add(1)
 			limiter <- struct{}{}
@@ -114,5 +114,5 @@ func main() {
 	}
 
 	wg.Wait()
-	fmt.Printf("Transfer complete. %d weather files uploaded in %s\n", uploadCount, time.Since(start))
+	fmt.Printf("Transfer complete. %d files safely synced to S3 in %s\n", uploadCount, time.Since(start))
 }

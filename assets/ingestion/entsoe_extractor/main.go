@@ -1,3 +1,4 @@
+// entsoe/main.go
 package main
 
 import (
@@ -88,7 +89,7 @@ func fetchENTSOE(req ApiRequest, token string, wg *sync.WaitGroup, limiter chan 
 
 func main() {
 	start := time.Now()
-	fmt.Println("Starting Full Pan-European Historical Ingestion (2015 - Present)...")
+	fmt.Println("Starting Daily Pan-European Ingestion...")
 
 	err := godotenv.Load("../../../.env")
 	if err != nil {
@@ -121,21 +122,13 @@ func main() {
 		{"A69", "A01", "Forecast_WindSolar"},
 	}
 
-	// ENTSO-E API transparency platform data officially starts around Jan 1, 2015.
-	// We chunk it year by year to ensure clean parsing and safe API limits.
+	// Dynamic time window: Yesterday to Tomorrow
+	now := time.Now().UTC()
+	startStr := now.AddDate(0, 0, -1).Format("200601020000")
+	endStr := now.AddDate(0, 0, 1).Format("200601022300")
+
 	timeChunks := []struct{ Start, End string }{
-		{"201501010000", "201512312300"},
-		{"201601010000", "201612312300"},
-		{"201701010000", "201712312300"},
-		{"201801010000", "201812312300"},
-		{"201901010000", "201912312300"},
-		{"202001010000", "202012312300"},
-		{"202101010000", "202112312300"},
-		{"202201010000", "202212312300"},
-		{"202301010000", "202312312300"},
-		{"202401010000", "202412312300"},
-		{"202501010000", "202512312300"},
-		{"202601010000", "202605192300"}, // Current year up to today
+		{startStr, endStr},
 	}
 
 	var wg sync.WaitGroup

@@ -1,3 +1,4 @@
+// weather/main.go
 package main
 
 import (
@@ -7,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time" // Added time package for dynamic dates
 )
 
 // WeatherResponse maps the exact metrics needed for the Athena Silver Layer
@@ -23,8 +25,13 @@ func fetchWeather(city string, lat, lon float64, wg *sync.WaitGroup, limiter cha
 	limiter <- struct{}{}
 	defer func() { <-limiter }()
 
-	// Fetches the entire 11-year history in a single API call for the specific coordinates
-	url := fmt.Sprintf("https://archive-api.open-meteo.com/v1/archive?latitude=%f&longitude=%f&start_date=2015-01-01&end_date=2026-05-19&hourly=temperature_2m,wind_speed_10m&timezone=UTC", lat, lon)
+	// Dynamic time window: Yesterday to Tomorrow
+	now := time.Now().UTC()
+	startStr := now.AddDate(0, 0, -1).Format("2006-01-02")
+	endStr := now.AddDate(0, 0, 1).Format("2006-01-02")
+
+	// Injects the dynamic dates into the Open-Meteo URL
+	url := fmt.Sprintf("https://archive-api.open-meteo.com/v1/archive?latitude=%f&longitude=%f&start_date=%s&end_date=%s&hourly=temperature_2m,wind_speed_10m&timezone=UTC", lat, lon, startStr, endStr)
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -40,9 +47,17 @@ func fetchWeather(city string, lat, lon float64, wg *sync.WaitGroup, limiter cha
 	}
 
 	filePath := fmt.Sprintf("../../../data/raw/%s_weather.csv", city)
-	file, err := os.Create(filePath)
+
+	// SMART APPEND LOGIC: Check if the master file already exists
+	fileExists := false
+	if info, err := os.Stat(filePath); err == nil && info.Size() > 0 {
+		fileExists = true
+	}
+
+	// Use os.OpenFile to APPEND instead of os.Create (which overwrites)
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Printf("Error creating file for %s: %v\n", city, err)
+		fmt.Printf("Error opening file for %s: %v\n", city, err)
 		return
 	}
 	defer file.Close()
@@ -50,8 +65,10 @@ func fetchWeather(city string, lat, lon float64, wg *sync.WaitGroup, limiter cha
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	// Writes exactly what Athena expects: Timestamp, Temperature, WindSpeed
-	writer.Write([]string{"Timestamp", "Temperature", "WindSpeed"})
+	// Only write headers if the file didn't exist before
+	if !fileExists {
+		writer.Write([]string{"Timestamp", "Temperature", "WindSpeed"})
+	}
 
 	for i := range data.Hourly.Time {
 		writer.Write([]string{
@@ -61,7 +78,7 @@ func fetchWeather(city string, lat, lon float64, wg *sync.WaitGroup, limiter cha
 			fmt.Sprintf("%.2f", data.Hourly.WindSpeed10m[i]),
 		})
 	}
-	fmt.Printf("Saved 11-year weather data for %s\n", city)
+	fmt.Printf("Appended daily weather data for %s\n", city)
 }
 
 func main() {
@@ -89,12 +106,12 @@ func main() {
 
 	limiter := make(chan struct{}, 5)
 
-	fmt.Println("Starting 11-Year Open-Meteo Weather Extraction...")
+	fmt.Println("Starting Daily Open-Meteo Weather Update...")
 	for _, c := range cities {
 		wg.Add(1)
 		go fetchWeather(c.name, c.lat, c.lon, &wg, limiter)
 	}
 
 	wg.Wait()
-	fmt.Println("Weather extraction complete.")
+	fmt.Println("Daily weather update complete.")
 }
