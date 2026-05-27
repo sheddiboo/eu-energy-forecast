@@ -33,11 +33,19 @@ def execute_athena_query(query, description):
         time.sleep(2)
 
 if __name__ == "__main__":
-    # 1. Drop existing tables
+    # 1. Manually empty the S3 directories first
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket('eu-energy-raw-ireland-sj')
+    
+    print("Emptying S3 directories for clean build...")
+    bucket.objects.filter(Prefix='silver/master_data/').delete()
+    bucket.objects.filter(Prefix='gold/ml_features/').delete()
+
+    # 2. Drop existing tables
     execute_athena_query("DROP TABLE IF EXISTS silver_master_energy_data;", "Drop old Silver table")
     execute_athena_query("DROP TABLE IF EXISTS gold_ml_features;", "Drop old Gold table")
     
-    # 2. Read existing SQL files and execute them
+    # 3. Build layers
     base_dir = os.path.dirname(__file__)
     
     with open(os.path.join(base_dir, 'silver_layer.sql'), 'r') as f:

@@ -2,6 +2,7 @@ import os
 import sys
 import joblib
 import pandas as pd
+from datetime import datetime, timedelta
 
 # Appends the current directory to the system path to allow local module imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -24,7 +25,7 @@ def generate_daily_prediction():
         print("Error: Model artifact not found. Please run train_model.py first.")
         return
 
-    # 2. Fetch Only the Latest Gold Data from S3
+    # 2. Fetch the Latest Gold Data from the Data Lake
     print("Fetching today's live Gold features from S3...")
     try:
         df = pd.read_parquet("s3://eu-energy-raw-ireland-sj/gold/ml_features/")
@@ -32,25 +33,36 @@ def generate_daily_prediction():
         print(f"Error reading from S3: {e}")
         return
 
-    # Isolates the target market and the single most recent timestamp
+    # 3. Dynamically Target the Day-Ahead Market (T+24 Hours)
+    # Calculates tomorrow's exact date based on the server's current execution time
+    tomorrow = datetime.now() + timedelta(days=1)
+    target_date = tomorrow.date()
+
+    # Casts the timestamp column to proper datetime objects for accurate filtering
+    df['utc_timestamp'] = pd.to_datetime(df['utc_timestamp'])
+
+    # Isolates the target market and filters strictly for tomorrow's forecast features
     target_country = 'Germany'
     df_market = df[df['country'] == target_country].copy()
-    today_live_data = df_market.dropna().tail(1)
+    day_ahead_data = df_market[df_market['utc_timestamp'].dt.date == target_date].copy()
 
-    if today_live_data.empty:
-        print("Error: No live data available for inference.")
+    # Grabs the first available hourly block for the target day
+    day_ahead_data = day_ahead_data.dropna().head(1)
+
+    if day_ahead_data.empty:
+        print(f"Error: No live data available for the target date ({target_date}).")
         return
 
     # Extracts the exact features the model was trained on
-    X_live = today_live_data[feature_cols]
-    live_timestamp = today_live_data['utc_timestamp'].iloc[0]
+    X_live = day_ahead_data[feature_cols]
+    live_timestamp = day_ahead_data['utc_timestamp'].iloc[0]
 
-    # 3. Execute the Quantitative Prediction
+    # 4. Execute the Quantitative ML Prediction
     print(f"\nPredicting day-ahead price for: {live_timestamp}")
     baseline_price = model.predict(X_live)[0]
     print(f"Quantitative ML Prediction: EUR {baseline_price:.2f}/MWh")
 
-    # 4. Fetch the Qualitative LLM Overlay
+    # 5. Fetch the Qualitative LLM Overlay
     print("\nTriggering LLM Trader for Market Sentiment Analysis...")
     llm_response = llm_trader.get_market_sentiment_multiplier(
         baseline_prediction=baseline_price, 
@@ -65,7 +77,7 @@ def generate_daily_prediction():
     # Calculates the final adjusted price output
     final_price = baseline_price * multiplier
     
-    # 5. Display the Final System Output
+    # 6. Display the Final System Output
     print("\n===========================================")
     print("        FINAL DAY-AHEAD FORECAST           ")
     print("===========================================")
