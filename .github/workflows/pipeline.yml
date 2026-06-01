@@ -1,15 +1,12 @@
-name: Daily Bruin Energy Pipeline
-
-on:
-  schedule:
-    - cron: '0 6 * * *' 
-  workflow_dispatch: 
-
 jobs:
   bruin-orchestration:
     runs-on: ubuntu-latest
     
-    # This grants the automatic GITHUB_TOKEN permission to update the dashboard
+    # Add this environment variable to opt-in to Node 24 now
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    
+    # This grants the automatic GITHUB_TOKEN permission
     permissions:
       contents: write 
 
