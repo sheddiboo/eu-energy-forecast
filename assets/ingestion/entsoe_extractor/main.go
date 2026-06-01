@@ -93,7 +93,7 @@ func main() {
 
 	err := godotenv.Load("../../../.env")
 	if err != nil {
-		log.Fatal("Environment file loading failed.")
+		log.Println("No .env file found. Proceeding with system environment variables.") // <--- THE ONLY CHANGE
 	}
 
 	token := os.Getenv("ENTSOE_API_KEY")

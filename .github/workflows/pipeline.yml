@@ -1,0 +1,55 @@
+name: Daily Bruin Energy Pipeline
+
+on:
+  schedule:
+    - cron: '0 6 * * *' 
+  workflow_dispatch: 
+
+jobs:
+  bruin-orchestration:
+    runs-on: ubuntu-latest
+    
+    # This grants the automatic GITHUB_TOKEN permission to update the dashboard
+    permissions:
+      contents: write 
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # 1. Setup Go for the data extraction scripts
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21' 
+
+      # 2. Setup Python exactly as defined in thee Dockerfile
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # 3. Install 'uv' and the Python dependencies from pyproject.toml
+      - name: Install uv and Python Libraries
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.cargo/bin:$PATH"
+          uv pip install --system -r pyproject.toml 
+
+      # 4. Install the Bruin CLI natively
+      - name: Install Bruin
+        run: curl -sfL https://raw.githubusercontent.com/bruin-data/bruin/main/install.sh | sh -s -- -b /usr/local/bin
+
+      # 5. Create the raw data folder and trigger the orchestrator
+      - name: Run Bruin Pipeline
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: "eu-west-1" 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Automatically provided by GitHub
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          ENTSOE_API_KEY: ${{ secrets.ENTSOE_API_KEY }}
+        
+        run: |
+          mkdir -p data/raw
+          bruin run .
