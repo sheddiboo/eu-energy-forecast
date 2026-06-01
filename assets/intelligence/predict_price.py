@@ -114,5 +114,3 @@ def generate_daily_prediction():
 
 if __name__ == "__main__":
     generate_daily_prediction()
-
-```
