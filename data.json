@@ -1,0 +1,8 @@
+{
+  "last_updated": "2026-06-01",
+  "current_price": "€ 125.50",
+  "ai_analysis": "BULLISH: AI models indicate a 12% price spike over the next 24 hours due to projected drops in offshore wind generation across the EU grid.",
+  "labels": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+  "actual_prices": [105, 110, 108, 120, 125, null, null],
+  "predicted_prices": [null, null, null, null, 125, 135, 142]
+}
