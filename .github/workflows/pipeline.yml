@@ -1,53 +1,49 @@
+name: Daily Bruin Energy Pipeline
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
 jobs:
   bruin-orchestration:
     runs-on: ubuntu-latest
-    
-    # Add this environment variable to opt-in to Node 24 now
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    
-    # This grants the automatic GITHUB_TOKEN permission
     permissions:
-      contents: write 
-
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 1. Setup Go for the data extraction scripts
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
-          cache: false # Disabled to resolve 'go.sum not found' warning
+          cache: false
 
-      # 2. Setup Python version
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 3. Install 'uv' and the Python dependencies from pyproject.toml
       - name: Install uv and Python Libraries
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           export PATH="$HOME/.cargo/bin:$PATH"
-          uv pip install --system -r pyproject.toml 
+          uv pip install --system -r pyproject.toml
 
-      # 4. Install the Bruin CLI natively
       - name: Install Bruin
         run: curl -sfL https://raw.githubusercontent.com/bruin-data/bruin/main/install.sh | sh -s -- -b /usr/local/bin
 
-      # 5. Create the raw data folder and trigger the orchestrator
       - name: Run Bruin Pipeline
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: "eu-west-1" 
+          AWS_DEFAULT_REGION: "eu-west-1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           ENTSOE_API_KEY: ${{ secrets.ENTSOE_API_KEY }}
-        
         run: |
           mkdir -p data/raw
           bruin run .
