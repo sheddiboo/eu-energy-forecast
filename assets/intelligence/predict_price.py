@@ -43,7 +43,7 @@ def generate_daily_prediction():
     df_market['utc_timestamp'] = pd.to_datetime(df_market['utc_timestamp'])
     df_market = df_market.sort_values('utc_timestamp', ascending=True)
     
-    # THE FIX: Bulletproof Imputation
+    # Bulletproof Imputation
     print("Imputing missing features (Forward Fill -> Zero Fill)...")
     
     # 1. Try to pull values forward from previous hours
@@ -116,9 +116,9 @@ def generate_daily_prediction():
         "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M UTC"),
         "current_price": f"€ {baseline_price:.2f}", 
         "ai_analysis": f"{sentiment.upper()}: {reasoning}",
-        "labels": ["Day -4", "Day -3", "Day -2", "Yesterday", "Today", "Tomorrow (ML)", "Tomorrow (AI)"],
-        "actual_prices": historical_prices + [None, None],
-        "predicted_prices": [None, None, None, None, historical_prices[-1], round(baseline_price, 2), round(final_price, 2)]
+        "labels": ["Day -4", "Day -3", "Day -2", "Yesterday", "Today", "Tomorrow"],
+        "actual_prices": historical_prices + [None],
+        "predicted_prices": [None, None, None, None, historical_prices[-1], round(final_price, 2)]
     }
 
     json_path = os.path.join(project_root, 'data.json')
