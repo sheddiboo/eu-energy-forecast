@@ -1,3 +1,49 @@
+import boto3
+from moto import mock_aws
+
+@mock_aws
+def test_s3_upload():
+    # Setup mock S3
+    s3 = boto3.client('s3', region_name='us-east-1')
+    bucket_name = 'eu-energy-forecaster-landing-zone'
+    
+    # Try to upload without creating the bucket first (This will simulate the error)
+    try:
+        s3.upload_file('test.csv', bucket_name, 'bronze/test.csv')
+    except Exception as e:
+        print(f"Error when bucket doesn't exist: {e}")
+
+    # Now create the bucket and try again
+    print("\nCreating bucket...")
+    s3.create_bucket(Bucket=bucket_name)
+    
+    # Create a dummy file
+    with open('test.csv', 'w') as f:
+        f.write('id,value\n1,100')
+        
+    print("Uploading file...")
+    s3.upload_file('test.csv', bucket_name, 'bronze/test.csv')
+    print("Upload successful!")
+    
+    # Verify file is there
+    response = s3.list_objects_v2(Bucket=bucket_name)
+    print(f"Objects in bucket: {[obj['Key'] for obj in response.get('Contents', [])]}")
+
+test_s3_upload()
+
+
+```
+
+```text
+Traceback (most recent call last):
+  File "<xbox-string>", line 1, in <module>
+    import boto3
+ModuleNotFoundError: No module named 'boto3'
+
+
+```
+
+```python
 import os
 import sys
 import joblib
@@ -23,32 +69,47 @@ def generate_daily_prediction():
         feature_cols = artifact['features']
         print(f"Loaded existing baseline model (Historical MAE: +/- EUR {model_mae:.2f})")
     except FileNotFoundError:
-        print("Error: Model artifact not found. Please run train_model.py first.")
-        return
+        print("CRITICAL ERROR: baseline_model.pkl not found!")
+        print("Did you push the model artifact to your GitHub repository?")
+        sys.exit(1)
 
     # Fetch the Latest Gold Data from the Data Lake
     print("Fetching today's live Gold features from S3...")
     try:
         df = pd.read_parquet("s3://eu-energy-raw-ireland-sj/gold/ml_features/")
     except Exception as e:
-        print(f"Error reading from S3: {e}")
-        return
+        print(f"CRITICAL ERROR reading from S3: {e}")
+        print("You might be missing 's3fs' in your pyproject.toml dependencies.")
+        sys.exit(1)
 
-    # Dynamically Target the Day-Ahead Market (T+24 Hours)
+    # Dynamically Target the Market Data (With Fallback)
+    target_country = 'Germany'
+    df_market = df[df['country'] == target_country].copy()
+    
+    if df_market.empty:
+        print(f"CRITICAL ERROR: No data found for {target_country} in the Gold table.")
+        sys.exit(1)
+
+    df_market['utc_timestamp'] = pd.to_datetime(df_market['utc_timestamp'])
+    
     tomorrow = datetime.now() + timedelta(days=1)
     target_date = tomorrow.date()
 
-    df['utc_timestamp'] = pd.to_datetime(df['utc_timestamp'])
-
-    target_country = 'Germany'
-    df_market = df[df['country'] == target_country].copy()
+    # Try to get tomorrow's forecasted data
     day_ahead_data = df_market[df_market['utc_timestamp'].dt.date == target_date].copy()
-
     day_ahead_data = day_ahead_data.dropna().head(1)
 
+    # If tomorrow isn't published yet, fallback to the most recent data
     if day_ahead_data.empty:
-        print(f"Error: No live data available for the target date ({target_date}).")
-        return
+        print(f"Warning: Tomorrow's data ({target_date}) not fully published by ENTSO-E yet.")
+        print("Falling back to the most recent available grid data...")
+        
+        # Sort by time descending and grab the very first complete row
+        day_ahead_data = df_market.sort_values('utc_timestamp', ascending=False).dropna().head(1)
+        
+        if day_ahead_data.empty:
+             print("CRITICAL ERROR: Gold table is completely empty after dropping nulls.")
+             sys.exit(1)
 
     X_live = day_ahead_data[feature_cols]
     live_timestamp = day_ahead_data['utc_timestamp'].iloc[0]
