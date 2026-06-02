@@ -42,21 +42,34 @@ def generate_daily_prediction():
 
     df_market['utc_timestamp'] = pd.to_datetime(df_market['utc_timestamp'])
     
+    # Sort chronologically to prepare for forward filling
+    df_market = df_market.sort_values('utc_timestamp', ascending=True)
+    
+    # THE FIX: Fill missing values instead of dropping the entire row
+    print("Imputing missing features using Forward Fill...")
+    df_market[feature_cols] = df_market[feature_cols].ffill()
+    
+    # We still dropna just in case the absolute first row had nulls, 
+    # but now the rest of the dataset will survive.
+    df_market = df_market.dropna(subset=feature_cols)
+
+    if df_market.empty:
+        print("CRITICAL ERROR: Gold table is completely empty even after imputation.")
+        sys.exit(1)
+
     tomorrow = datetime.now() + timedelta(days=1)
     target_date = tomorrow.date()
 
     day_ahead_data = df_market[df_market['utc_timestamp'].dt.date == target_date].copy()
-    day_ahead_data = day_ahead_data.dropna().head(1)
-
-    if day_ahead_data.empty:
+    
+    if not day_ahead_data.empty:
+        # Grab the earliest hour of tomorrow
+        day_ahead_data = day_ahead_data.head(1)
+    else:
         print(f"Warning: Tomorrow's data ({target_date}) not fully published by ENTSO-E yet.")
         print("Falling back to the most recent available grid data...")
-        
-        day_ahead_data = df_market.sort_values('utc_timestamp', ascending=False).dropna().head(1)
-        
-        if day_ahead_data.empty:
-             print("CRITICAL ERROR: Gold table is completely empty after dropping nulls.")
-             sys.exit(1)
+        # Grab the absolute latest hour available
+        day_ahead_data = df_market.sort_values('utc_timestamp', ascending=False).head(1)
 
     X_live = day_ahead_data[feature_cols]
     live_timestamp = day_ahead_data['utc_timestamp'].iloc[0]
