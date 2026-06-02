@@ -1,5 +1,5 @@
 {
-    "last_updated": "2026-06-02 10:26 UTC",
+    "last_updated": "2026-06-02 12:40 UTC",
     "current_price": "\u20ac 166.77",
     "ai_analysis": "NEUTRAL: The lack of major energy news suggests no significant changes in market conditions, leading to a neutral sentiment.",
     "labels": [
@@ -8,8 +8,7 @@
         "Day -2",
         "Yesterday",
         "Today",
-        "Tomorrow (ML)",
-        "Tomorrow (AI)"
+        "Tomorrow"
     ],
     "actual_prices": [
         158.43,
@@ -17,7 +16,6 @@
         163.43,
         175.11,
         166.77,
-        null,
         null
     ],
     "predicted_prices": [
@@ -25,7 +23,6 @@
         null,
         null,
         null,
-        166.77,
         166.77,
         166.77
     ]
