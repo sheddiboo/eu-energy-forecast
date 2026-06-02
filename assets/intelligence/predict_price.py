@@ -41,20 +41,24 @@ def generate_daily_prediction():
         sys.exit(1)
 
     df_market['utc_timestamp'] = pd.to_datetime(df_market['utc_timestamp'])
-    
-    # Sort chronologically to prepare for forward filling
     df_market = df_market.sort_values('utc_timestamp', ascending=True)
     
-    # THE FIX: Fill missing values instead of dropping the entire row
-    print("Imputing missing features using Forward Fill...")
+    # THE FIX: Bulletproof Imputation
+    print("Imputing missing features (Forward Fill -> Zero Fill)...")
+    
+    # 1. Try to pull values forward from previous hours
     df_market[feature_cols] = df_market[feature_cols].ffill()
     
-    # We still dropna just in case the absolute first row had nulls, 
-    # but now the rest of the dataset will survive.
-    df_market = df_market.dropna(subset=feature_cols)
+    # 2. Try to pull values backward (if the very first hour was missing)
+    df_market[feature_cols] = df_market[feature_cols].bfill()
+    
+    # 3. If a column is ENTIRELY empty, force it to 0.0 so the model survives
+    df_market[feature_cols] = df_market[feature_cols].fillna(0.0)
+
+    # We completely removed dropna(). The dataset is guaranteed to be intact.
 
     if df_market.empty:
-        print("CRITICAL ERROR: Gold table is completely empty even after imputation.")
+        print("CRITICAL ERROR: Gold table is completely empty.")
         sys.exit(1)
 
     tomorrow = datetime.now() + timedelta(days=1)
@@ -63,12 +67,10 @@ def generate_daily_prediction():
     day_ahead_data = df_market[df_market['utc_timestamp'].dt.date == target_date].copy()
     
     if not day_ahead_data.empty:
-        # Grab the earliest hour of tomorrow
         day_ahead_data = day_ahead_data.head(1)
     else:
         print(f"Warning: Tomorrow's data ({target_date}) not fully published by ENTSO-E yet.")
         print("Falling back to the most recent available grid data...")
-        # Grab the absolute latest hour available
         day_ahead_data = df_market.sort_values('utc_timestamp', ascending=False).head(1)
 
     X_live = day_ahead_data[feature_cols]
