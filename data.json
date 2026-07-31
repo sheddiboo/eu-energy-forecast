@@ -1,6 +1,6 @@
 {
-    "last_updated": "2026-07-30 08:38 UTC",
-    "current_price": "\u20ac 152.77",
+    "last_updated": "2026-07-31 08:54 UTC",
+    "current_price": "\u20ac 144.68",
     "ai_analysis": "NEUTRAL: API Failure. Defaulting to neutral.",
     "labels": [
         "Day -4",
@@ -11,11 +11,11 @@
         "Tomorrow"
     ],
     "actual_prices": [
-        145.13,
-        155.83,
-        149.72,
-        160.41,
-        152.77,
+        137.45,
+        147.58,
+        141.79,
+        151.92,
+        144.68,
         null
     ],
     "predicted_prices": [
@@ -23,7 +23,7 @@
         null,
         null,
         null,
-        152.77,
-        152.77
+        144.68,
+        144.68
     ]
 }
